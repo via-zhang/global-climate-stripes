@@ -349,7 +349,7 @@ export default function App() {
       {/* Header overlay */}
       <header className="absolute top-0 right-0 z-[500] p-3 lg:p-4 pointer-events-none flex justify-end max-w-[calc(100vw-55px)] sm:max-w-[320px] lg:max-w-none">
         <div className="flex items-center gap-3 lg:gap-4 bg-black/60 backdrop-blur-md p-3 lg:p-4 rounded-lg border border-white/10 pointer-events-auto shadow-2xl">
-          <img src="/logo.svg" alt="Logo" className="w-8 h-8 lg:w-10 lg:h-10 rounded-sm shadow-lg shadow-blue-900/20 flex-shrink-0 object-cover" />
+          <img src="logo.svg" alt="Logo" className="w-8 h-8 lg:w-10 lg:h-10 rounded-sm shadow-lg shadow-blue-900/20 flex-shrink-0 object-cover" />
           <div>
             <h1 className="text-[14px] sm:text-[14px] md:text-[14px] lg:text-lg font-light tracking-widest text-white uppercase whitespace-normal lg:whitespace-nowrap">
               Global{' '}

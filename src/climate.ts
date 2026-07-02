@@ -52,7 +52,7 @@ export const fetchStripeData = async (polygon: any) => {
     const [lng, lat] = center.geometry.coordinates;
 
     // Use NASA POWER API
-    const url = `https://power.larc.nasa.gov/api/temporal/monthly/point?parameters=T2M&community=RE&longitude=${lng}&latitude=${lat}&start=1981&end=2023&format=JSON`;
+    const url = `https://power.larc.nasa.gov/api/temporal/monthly/point?parameters=T2M&community=RE&longitude=${lng}&latitude=${lat}&start=1981&end=2025&format=JSON`;
     
     try {
       const response = await fetch(url);
@@ -77,7 +77,7 @@ export const fetchStripeData = async (polygon: any) => {
       }
 
       const result = [];
-      for (let year = 1981; year <= 2023; year++) {
+      for (let year = 1981; year <= 2025; year++) {
         const yStr = year.toString();
         if (yearlyData[yStr] && yearlyData[yStr].count > 0) {
           result.push({

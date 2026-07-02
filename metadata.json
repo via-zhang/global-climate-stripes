@@ -1,0 +1,5 @@
+{
+  "name": "Global Climate Stripes",
+  "description": "Interactive web application that generates historical climate warming stripes (1981-2023) for any user-defined geographic region, utilizing NASA POWER data and automatic land/sea masking.",
+  "requestFramePermissions": []
+}

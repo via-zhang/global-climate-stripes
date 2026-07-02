@@ -6,6 +6,7 @@ import 'leaflet-draw/dist/leaflet.draw.css';
 import 'leaflet-draw';
 import { Download, Info, Layers, Waves, X, ChevronUp, ChevronDown } from 'lucide-react';
 import * as d3 from 'd3';
+import { fetchStripeData } from './climate';
 
 // Fix for leaflet-draw rectangle issue on modern browsers
 // @ts-ignore
@@ -332,13 +333,7 @@ export default function App() {
     setData(null);
     setIsPanelOpen(true); // Open the panel when loading starts
     try {
-      const response = await fetch('/api/stripes', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ polygon: geoJSON })
-      });
-      if (!response.ok) throw new Error('Failed to fetch data');
-      const result = await response.json();
+      const result = await fetchStripeData(geoJSON);
       setData(result);
       if (result.land && result.land.length > 0) setActiveTab('land');
       else if (result.sea && result.sea.length > 0) setActiveTab('sea');
@@ -352,14 +347,14 @@ export default function App() {
   return (
     <div className="flex flex-col h-screen w-full bg-[#050505] text-[#E0E0E0] font-sans overflow-hidden relative">
       {/* Header overlay */}
-      <header className="absolute top-0 left-0 right-0 z-[500] p-4 md:p-6 pointer-events-none flex justify-end">
-        <div className="flex items-center gap-3 md:gap-4 bg-black/60 backdrop-blur-md p-3 md:p-4 rounded-lg border border-white/10 w-full md:w-auto pointer-events-auto shadow-2xl">
-          <img src="/logo.svg" alt="Logo" className="w-8 h-8 md:w-10 md:h-10 rounded-sm shadow-lg shadow-blue-900/20 flex-shrink-0 object-cover" />
-          <div className="overflow-hidden">
-            <h1 className="text-sm md:text-xl font-light tracking-widest text-white uppercase truncate">
+      <header className="absolute top-0 right-0 z-[500] p-3 lg:p-4 pointer-events-none flex justify-end max-w-[calc(100vw-55px)] sm:max-w-[320px] lg:max-w-none">
+        <div className="flex items-center gap-3 lg:gap-4 bg-black/60 backdrop-blur-md p-3 lg:p-4 rounded-lg border border-white/10 pointer-events-auto shadow-2xl">
+          <img src="/logo.svg" alt="Logo" className="w-8 h-8 lg:w-10 lg:h-10 rounded-sm shadow-lg shadow-blue-900/20 flex-shrink-0 object-cover" />
+          <div>
+            <h1 className="text-[14px] sm:text-[14px] md:text-[14px] lg:text-lg font-light tracking-widest text-white uppercase whitespace-normal lg:whitespace-nowrap">
               Global{' '}
               <span 
-                className="font-bold"
+                className="font-bold whitespace-nowrap"
                 style={{ 
                   backgroundImage: 'linear-gradient(to right, #2166ac, #4393c3, #f7f7f7, #d6604d, #b2182b)', 
                   WebkitBackgroundClip: 'text', 
@@ -369,11 +364,11 @@ export default function App() {
                 Climate Stripes
               </span>
             </h1>
-            <p className="text-[8px] md:text-[10px] uppercase tracking-[0.1em] md:tracking-[0.2em] text-white/40 flex items-center gap-2 truncate">
-              Visualize temperature change around the world
+            <p className="text-[8px] lg:text-[9px] uppercase tracking-[0.1em] text-white/40 flex flex-wrap lg:flex-nowrap items-center gap-2 mt-1 leading-relaxed">
+              <span className="whitespace-normal lg:whitespace-nowrap">Visualize temperature change around the world</span>
               <button 
                 onClick={() => setShowTooltip(true)} 
-                className="hover:text-white transition-colors flex-shrink-0"
+                className="hover:text-white transition-colors flex-shrink-0 inline-flex items-center"
                 title="Show Instructions"
               >
                 <Info className="w-3 h-3" />
@@ -388,19 +383,24 @@ export default function App() {
         <MapContainer 
           center={[20, 0]} 
           zoom={3} 
+          minZoom={2}
           className="w-full h-full"
           zoomControl={true}
+          maxBounds={[[-90, -180], [90, 180]]}
+          maxBoundsViscosity={1.0}
         >
           <TileLayer
             attribution='&copy; <a href="https://carto.com/attributions">CARTO</a>'
             url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+            noWrap={true}
+            bounds={[[-90, -180], [90, 180]]}
           />
           <DrawControl onPolygonCreated={handlePolygonCreated} onDrawStart={() => setShowTooltip(false)} />
         </MapContainer>
         
         {showTooltip && (
-          <div className="absolute top-[70px] md:top-[80px] right-4 md:right-auto md:left-16 z-[400] bg-black/80 backdrop-blur-md border border-white/10 px-4 py-3 rounded shadow-xl max-w-[250px] md:max-w-xs flex flex-col pointer-events-auto animate-in fade-in slide-in-from-top-4 md:slide-in-from-left-4">
-            <div className="absolute right-4 md:-left-[5px] -top-[5px] md:top-4 w-3 h-3 bg-black/80 border-t md:border-t-0 md:border-l border-l md:border-b border-white/10 transform rotate-45"></div>
+          <div className="absolute top-[120px] lg:top-[80px] left-14 md:left-16 z-[400] bg-black/80 backdrop-blur-md border border-white/10 px-4 py-3 rounded shadow-xl max-w-[220px] md:max-w-[260px] flex flex-col pointer-events-auto animate-in fade-in slide-in-from-left-4">
+            <div className="absolute -left-[5px] top-4 lg:top-4 w-3 h-3 bg-black/80 border-t-0 border-l border-b border-white/10 transform rotate-45 hidden lg:block"></div>
             <div className="flex justify-between items-start mb-1 relative z-10 gap-4">
               <h3 className="text-[12px] font-bold text-white/70 uppercase tracking-widest">Select an Area</h3>
               <button onClick={() => setShowTooltip(false)} className="text-white/40 hover:text-white transition-colors flex-shrink-0">
@@ -442,10 +442,9 @@ export default function App() {
                 </div>
               </div>
             ) : !data ? (
-              <div className="flex-1 flex flex-col items-center justify-center text-center opacity-50 max-w-md mx-auto h-64">
+              <div className="flex-1 flex flex-col items-center justify-center text-center opacity-50 max-w-md mx-auto h-64 px-4">
                 <Info className="w-8 h-8 mb-4 text-white/30" />
-                <p className="text-xs font-bold text-white/50 uppercase tracking-widest">Waiting for selection</p>
-                <p className="text-[10px] text-white/30 uppercase tracking-widest mt-2 leading-relaxed">Draw a rectangle or polygon on the map, and the app will compute historical annual mean temperatures.</p>
+                <p className="text-xs font-bold text-white/50 uppercase tracking-widest leading-relaxed">Draw a rectangle or polygon on the map, and the app will compute historical annual mean temperatures.</p>
               </div>
             ) : (
               <div className="flex flex-col w-full">

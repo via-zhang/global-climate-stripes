@@ -389,12 +389,13 @@ export default function App() {
           maxBounds={[[-90, -180], [90, 180]]}
           maxBoundsViscosity={1.0}
         >
-          <TileLayer
-            attribution='&copy; <a href="https://carto.com/attributions">CARTO</a>'
-            url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
-            noWrap={true}
-            bounds={[[-90, -180], [90, 180]]}
-          />
+        <TileLayer
+          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+          noWrap={true}
+          bounds={[[-90, -180], [90, 180]]}
+          className="dark-tiles"
+        />
           <DrawControl onPolygonCreated={handlePolygonCreated} onDrawStart={() => setShowTooltip(false)} />
         </MapContainer>
         
@@ -407,7 +408,7 @@ export default function App() {
                 <X className="w-3 h-3" />
               </button>
             </div>
-            <p className="text-[12px] text-white/50 leading-relaxed relative z-10">Use the drawing tools (polygon or rectangle) to select a region on the map. The generated climate stripe will show averaged temperatures within the area you selected.</p>
+            <p className="text-[12px] text-white/50 leading-relaxed relative z-10">Use the drawing tools (polygon or rectangle) to select a region on the map. The generated climate stripe will show averaged temperatures within the selected area.</p>
           </div>
         )}
       </main>

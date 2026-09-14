@@ -1,10 +1,10 @@
 # Global Climate Stripes
 
-An interactive web application that visualizes historical temperature changes (climate stripes) for any user-selected geographic region across the globe.
+An interactive web app that visualizes historical temperature changes  for any user-selected geographic region across the globe.
 
 ## Overview
 
-Global Climate Stripes allows users to draw a polygon or rectangle on an interactive map to define a region of interest. The application then processes the region and generates a "Climate Stripes" visualization (from 1981 to 2023), which intuitively displays long-term temperature anomalies using a color scale from blue (cooler) to red (warmer). The data is separated into "Land" and "Sea" so you can independently observe temperature changes over different surface types within the same selection.
+Global Climate Stripes allows users to draw a polygon or rectangle on an interactive map to define a region of interest. The app then processes the region and generates a "Climate Stripes" visualization (from 1981 to 2023), which intuitively displays long-term temperature anomalies using a color scale from blue (cooler) to red (warmer). The data is separated into "Land" and "Sea" so you can independently observe temperature changes over different surface types within the same selection.
 
 Users can toggle between Celsius and Fahrenheit and download an annotated version of the stripes for presentation or sharing.
 
@@ -12,7 +12,7 @@ Users can toggle between Celsius and Fahrenheit and download an annotated versio
 
 When you draw a shape on the map, the following geospatial processing occurs:
 
-1. **Bounding Box & Grid Generation**: The application calculates the geographic bounding box of your drawn polygon. Using Turf.js, it generates a uniform grid of sample points (targeting ~100 points depending on area size) that fall precisely within the boundaries of your drawn shape.
+1. **Bounding Box & Grid Generation**: The app calculates the geographic bounding box of your drawn polygon. Using Turf.js, it generates a uniform grid of sample points (targeting ~100 points depending on area size) that fall precisely within the boundaries of your drawn shape.
 2. **Land/Sea Classification**: Each sample point is cross-referenced against a Natural Earth land polygon dataset (`ne_110m_land.geojson`). This accurately classifies every point as either a "Land" surface or a "Sea" surface.
 3. **Data Fetching**: The server fetches historical mean daily temperatures (aggregated to yearly averages) from 1981 to 2023 for each valid sample point.
    - **Source**: NASA POWER API.

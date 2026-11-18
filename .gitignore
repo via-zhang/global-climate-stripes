@@ -6,3 +6,10 @@ coverage/
 *.log
 .env*
 !.env.example
+
+# Large source data and local build output (never commit)
+working/
+*.nc
+.venv/
+__pycache__/
+.claude/

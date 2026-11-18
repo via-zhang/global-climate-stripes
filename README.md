@@ -1,29 +1,40 @@
 # Global Climate Stripes
 
-An interactive web app that visualizes historical temperature changes  for any user-selected geographic region across the globe.
+An interactive web app that visualizes historical temperature change for any region you draw on a world map.
 
 ## Overview
 
-Global Climate Stripes allows users to draw a polygon or rectangle on an interactive map to define a region of interest. The app then processes the region and generates a "Climate Stripes" visualization (from 1981 to 2023), which intuitively displays long-term temperature anomalies using a color scale from blue (cooler) to red (warmer). The data is separated into "Land" and "Sea" so you can independently observe temperature changes over different surface types within the same selection.
+Draw a polygon or rectangle on the map, and the app builds "climate stripes" for that region from **1850 to 2025**. Each stripe is one year, colored from blue (cooler) to red (warmer) relative to a 1981–2010 baseline. Results are split into **Land** and **Ocean** so you can compare the two surfaces in the same selection.
 
-Users can toggle between Celsius and Fahrenheit and download an annotated version of the stripes for presentation or sharing.
+You can switch between Celsius and Fahrenheit and download the stripes as a PNG, with or without annotations.
 
-## How Data is Processed
+## How the data is processed
 
-When you draw a shape on the map, the following geospatial processing occurs:
+1. **Pre-built tiles.** [`scripts/build_tiles.py`](scripts/build_tiles.py) turns Berkeley Earth's monthly 0.25° high-resolution data into annual means and splits them into small tiles, plus a 1° version for large areas. The tiles are hosted as static files outside this repository. The app is fully static: there is no backend and no live API call.
+2. **Grid cells.** When you draw a shape, the app finds every grid cell whose centre is inside it (or, for very small shapes, the cell under its centre) and loads only the tiles those cells are in. Regions up to roughly 20°–25° across use 0.25° cells; larger ones use 1° cells so loading stays fast.
+3. **Land and ocean weighting.** Each cell has a land fraction from Berkeley Earth. Cells are weighted by area (cosine of latitude) and by their land or ocean share, so a coastal cell counts partly toward each.
+4. **Averaging.** Annual anomalies are averaged across cells, then the region's 1951–1980 mean temperature is added back to give absolute temperatures. A year is left blank (hatched) if less than half the area has data, which mostly affects the 1800s.
+5. **Visualization.** Each year's temperature is compared to the 1981–2010 average and colored on a red–blue scale with D3.
 
-1. **Bounding Box & Grid Generation**: The app calculates the geographic bounding box of your drawn polygon. Using Turf.js, it generates a uniform grid of sample points (targeting ~100 points depending on area size) that fall precisely within the boundaries of your drawn shape.
-2. **Land/Sea Classification**: Each sample point is cross-referenced against a Natural Earth land polygon dataset (`ne_110m_land.geojson`). This accurately classifies every point as either a "Land" surface or a "Sea" surface.
-3. **Data Fetching**: The server fetches historical mean daily temperatures (aggregated to yearly averages) from 1981 to 2023 for each valid sample point.
-   - **Source**: NASA POWER API.
-4. **Aggregation**: The yearly temperatures for all points classified as Land are averaged together, and the same is done for Sea points. This produces a single, cohesive timeline of temperature anomalies tailored strictly to the custom area you drew.
-5. **Visualization**: The resulting yearly averages are compared to a baseline period (1981–2010), and the anomalies are mapped to a divergent red-blue color scale using D3.js.
+Open-ocean values in Berkeley Earth come from sea-surface temperature; land values are air temperature.
 
-## Tech Stack
+## Data and license
 
-- **Frontend**: React (with Vite), TypeScript, Tailwind CSS
-- **Mapping**: React-Leaflet, Leaflet, Leaflet-Draw
-- **Data Visualization**: HTML5 Canvas, D3.js
-- **Backend**: Node.js, Express.js
-- **Geospatial Analysis**: Turf.js
-- **Data APIs**: NASA POWER API (open-source)
+Temperature data: **[Berkeley Earth](https://www.berkeleyearth.org)** High-Resolution (BEST-HR, beta), licensed under [CC BY-NC 4.0](https://creativecommons.org/licenses/by-nc/4.0/) for non-commercial use. The tiles are a modified (annually averaged, rounded) version of that data.
+
+Rohde, R. A., Calvert, B., and Hausfather, Z.: Berkeley Earth Surface Temperature – High-Resolution (BEST-HR): a 0.25° Global Gridded Temperature Data Set for Climate Monitoring, Earth Syst. Sci. Data Discuss. [preprint], https://doi.org/10.5194/essd-2026-412, in review, 2026.
+
+See [DATA_NOTICE.md](DATA_NOTICE.md) for the exact source file, the changes made, and how to rebuild the tiles.
+
+## Running locally
+
+1. Build the tiles into `working/tiles/` (see [DATA_NOTICE.md](DATA_NOTICE.md)). `npm run dev` serves them from there.
+2. For `npm run build` or `npm run deploy`, copy `.env.example` to `.env.production.local` and set `VITE_DATA_URL` to the public folder that holds the tiles.
+
+## Tech stack
+
+- **Frontend:** React (Vite), TypeScript, Tailwind CSS
+- **Mapping:** React-Leaflet, Leaflet, Leaflet-Draw, OpenStreetMap tiles
+- **Visualization:** HTML5 Canvas, D3.js
+- **Geospatial:** Turf.js
+- **Data pipeline:** Python, NumPy, netCDF4

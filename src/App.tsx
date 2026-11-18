@@ -6,7 +6,7 @@ import 'leaflet-draw/dist/leaflet.draw.css';
 import 'leaflet-draw';
 import { Download, Info, Layers, Waves, X, ChevronUp, ChevronDown } from 'lucide-react';
 import * as d3 from 'd3';
-import { fetchStripeData } from './climate';
+import { fetchStripeData, type StripeResult, type YearlyData } from './climate';
 
 // Fix for leaflet-draw rectangle issue on modern browsers
 // @ts-ignore
@@ -80,31 +80,78 @@ function DrawControl({ onPolygonCreated, onDrawStart }: { onPolygonCreated: (geo
   return null;
 }
 
-interface YearlyData {
-  year: number;
-  temp: number | null;
-  anomaly?: number | null;
+// Color scale: -2.5°C (blue) to +2.5°C (red)
+const MAX_ANOMALY = 2.5;
+const colorScale = d3.scaleSequential(d3.interpolateRdBu).domain([MAX_ANOMALY, -MAX_ANOMALY]);
+const LEGEND_GRADIENT = `linear-gradient(to right, ${d3
+  .range(11)
+  .map(i => colorScale(-MAX_ANOMALY + (2 * MAX_ANOMALY * i) / 10))
+  .join(', ')})`;
+const BASELINE: [number, number] = [1981, 2010];
+const CREDIT = 'Data: Berkeley Earth (berkeleyearth.org), CC BY-NC 4.0';
+const MISSING_HATCH =
+  'repeating-linear-gradient(135deg, #0b0b0b 0 4px, rgba(255,255,255,0.18) 4px 5px)';
+
+/** Diagonal hatching for years without enough data. */
+function missingPattern(ctx: CanvasRenderingContext2D, scale: number): CanvasPattern | string {
+  const size = Math.max(6, Math.round(8 * scale));
+  const tile = document.createElement('canvas');
+  tile.width = tile.height = size;
+  const t = tile.getContext('2d');
+  if (!t) return '#0b0b0b';
+  t.fillStyle = '#0b0b0b';
+  t.fillRect(0, 0, size, size);
+  t.strokeStyle = 'rgba(255,255,255,0.18)';
+  t.lineWidth = Math.max(1, scale);
+  t.beginPath();
+  t.moveTo(0, size);
+  t.lineTo(size, 0);
+  t.stroke();
+  return ctx.createPattern(tile, 'repeat') ?? '#0b0b0b';
+}
+
+function drawStripes(
+  ctx: CanvasRenderingContext2D,
+  data: YearlyData[],
+  width: number,
+  height: number,
+  scale: number,
+  top = 0,
+) {
+  ctx.clearRect(0, top, width, height);
+  const hatch = missingPattern(ctx, scale);
+  const barWidth = width / data.length;
+  data.forEach((d, i) => {
+    ctx.fillStyle = d.anomaly === null || d.anomaly === undefined ? hatch : colorScale(d.anomaly);
+    const x1 = Math.round(i * barWidth);
+    const x2 = Math.round((i + 1) * barWidth);
+    ctx.fillRect(x1, top, x2 - x1, height);
+  });
 }
 
 function StripesVisualization({ data, annotated, title, unit }: { data: YearlyData[], annotated: boolean, title: string, unit: 'C' | 'F' }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
-  
-  // Calculate anomalies based on 1981-2010 baseline
-  const { processedData, baselineTemp } = useMemo(() => {
-    if (!data || data.length === 0) return { processedData: [], baselineTemp: 0 };
-    
+  // Canvas backing-store size in device pixels, so stripes stay sharp on high-DPI screens.
+  const [canvasSize, setCanvasSize] = useState({ w: 800, h: 300 });
+
+  // Calculate anomalies relative to the baseline period
+  const { processedData, baselineTemp, hasMissing } = useMemo(() => {
+    const empty = { processedData: [] as YearlyData[], baselineTemp: 0, hasMissing: false };
+    if (!data || data.length === 0) return empty;
+
     const validData = data.filter(d => d.temp !== null && d.temp !== undefined) as {year: number, temp: number}[];
-    if (validData.length === 0) return { processedData: [], baselineTemp: 0 };
-    
-    const baselinePeriod = validData.filter(d => d.year >= 1981 && d.year <= 2010);
-    const temp = baselinePeriod.length > 0 
-      ? baselinePeriod.reduce((sum, d) => sum + d.temp, 0) / baselinePeriod.length 
+    if (validData.length === 0) return empty;
+
+    const baselinePeriod = validData.filter(d => d.year >= BASELINE[0] && d.year <= BASELINE[1]);
+    const temp = baselinePeriod.length > 0
+      ? baselinePeriod.reduce((sum, d) => sum + d.temp, 0) / baselinePeriod.length
       : validData.reduce((sum, d) => sum + d.temp, 0) / validData.length; // fallback to overall avg if period missing
 
     return {
       baselineTemp: temp,
+      hasMissing: validData.length < data.length,
       processedData: data.map(d => ({
         ...d,
         anomaly: (d.temp === null || d.temp === undefined) ? null : d.temp - temp
@@ -112,109 +159,107 @@ function StripesVisualization({ data, annotated, title, unit }: { data: YearlyDa
     };
   }, [data]);
 
-  // Color scale: -2.5C to +2.5C
-  const maxAnomaly = 2.5;
-  const minAnomaly = -2.5;
-  const colorScale = d3.scaleSequential(d3.interpolateRdBu).domain([maxAnomaly, minAnomaly]);
-
+  const hasData = processedData.length > 0;
   const displayBaseline = unit === 'C' ? `${baselineTemp.toFixed(1)}°C` : `${(baselineTemp * 9/5 + 32).toFixed(1)}°F`;
-  const displayMin = unit === 'C' ? '-2.5°C' : '-4.5°F';
-  const displayMax = unit === 'C' ? '+2.5°C' : '+4.5°F';
+  const displayMin = unit === 'C' ? `-${MAX_ANOMALY}°C` : `-${(MAX_ANOMALY * 9 / 5).toFixed(1)}°F`;
+  const displayMax = unit === 'C' ? `+${MAX_ANOMALY}°C` : `+${(MAX_ANOMALY * 9 / 5).toFixed(1)}°F`;
 
   useEffect(() => {
     const canvas = canvasRef.current;
-    if (!canvas || processedData.length === 0) return;
+    if (!canvas) return;
+    const observer = new ResizeObserver(([entry]) => {
+      const dpr = window.devicePixelRatio || 1;
+      const w = Math.max(1, Math.round(entry.contentRect.width * dpr));
+      setCanvasSize({ w, h: Math.round((w * 3) / 8) });
+    });
+    observer.observe(canvas);
+    return () => observer.disconnect();
+  }, [hasData]);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || !hasData) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
-
-    const width = canvas.width;
-    const height = canvas.height;
-    ctx.clearRect(0, 0, width, height);
-
-    const barWidth = width / processedData.length;
-
-    processedData.forEach((d, i) => {
-      if (d.anomaly === null || d.anomaly === undefined) {
-        ctx.fillStyle = '#050505'; // Match background for missing data
-      } else {
-        ctx.fillStyle = colorScale(d.anomaly);
-      }
-      const x1 = Math.round(i * barWidth);
-      const x2 = Math.round((i + 1) * barWidth);
-      ctx.fillRect(x1, 0, x2 - x1, height);
-    });
-  }, [processedData, colorScale]);
+    drawStripes(ctx, processedData, canvas.width, canvas.height, window.devicePixelRatio || 1);
+  }, [processedData, hasData, canvasSize]);
 
   const handleDownload = () => {
-    if (!canvasRef.current || processedData.length === 0) return;
-    
-    // Create an offscreen canvas to optionally add annotations
+    if (!hasData) return;
+
+    // Annotated exports put the years above the stripes and the legend below,
+    // so no text is drawn on top of the colors.
+    const width = 1200;
+    const stripesHeight = 600;
+    const header = annotated ? 56 : 0;
+    const footer = annotated ? 96 : 0;
     const offscreen = document.createElement('canvas');
-    offscreen.width = 1200;
-    offscreen.height = 600;
+    offscreen.width = width;
+    offscreen.height = header + stripesHeight + footer;
     const ctx = offscreen.getContext('2d');
     if (!ctx) return;
 
-    const barWidth = offscreen.width / processedData.length;
-    processedData.forEach((d, i) => {
-      if (d.anomaly === null || d.anomaly === undefined) {
-        ctx.fillStyle = '#050505'; // Match background for missing data
-      } else {
-        ctx.fillStyle = colorScale(d.anomaly);
-      }
-      const x1 = Math.round(i * barWidth);
-      const x2 = Math.round((i + 1) * barWidth);
-      ctx.fillRect(x1, 0, x2 - x1, offscreen.height);
-    });
+    if (annotated) {
+      ctx.fillStyle = '#050505';
+      ctx.fillRect(0, 0, offscreen.width, offscreen.height);
+    }
+    drawStripes(ctx, processedData, width, stripesHeight, 1, header);
 
     if (annotated) {
-      // Add text and simple legend background
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
-      ctx.fillRect(0, offscreen.height - 70, offscreen.width, 70);
-      
-      const centerY = offscreen.height - 35;
-
       ctx.fillStyle = 'white';
       ctx.font = 'bold 24px Inter, sans-serif';
+      ctx.textBaseline = 'middle';
       ctx.textAlign = 'left';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(processedData[0].year.toString(), 30, centerY);
-      
+      ctx.fillText(processedData[0].year.toString(), 0, header / 2);
       ctx.textAlign = 'right';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(processedData[processedData.length - 1].year.toString(), offscreen.width - 30, centerY);
+      ctx.fillText(processedData[processedData.length - 1].year.toString(), width, header / 2);
+
+      const centerY = header + stripesHeight + 40;
 
       // Draw colorbar
       const legendWidth = 400;
       const legendHeight = 12;
       const legendX = (offscreen.width - legendWidth) / 2;
       const legendY = centerY - (legendHeight / 2) - 8;
-      
+
       const gradient = ctx.createLinearGradient(legendX, 0, legendX + legendWidth, 0);
       for (let i = 0; i <= 20; i++) {
-        const val = minAnomaly + (maxAnomaly - minAnomaly) * (i / 20);
+        const val = -MAX_ANOMALY + 2 * MAX_ANOMALY * (i / 20);
         gradient.addColorStop(i / 20, colorScale(val));
       }
-      
+
       ctx.fillStyle = gradient;
       ctx.fillRect(legendX, legendY, legendWidth, legendHeight);
-      
+
       ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
       ctx.font = '13px Inter, sans-serif';
       ctx.textAlign = 'right';
-      ctx.textBaseline = 'middle';
       ctx.fillText(displayMin, legendX - 12, centerY - 8);
       ctx.textAlign = 'left';
       ctx.fillText(displayMax, legendX + legendWidth + 12, centerY - 8);
 
       ctx.textAlign = 'center';
       ctx.font = '12px Inter, sans-serif';
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
+      ctx.fillText(`Baseline (${BASELINE[0]}-${BASELINE[1]}): ${displayBaseline}`, offscreen.width / 2, centerY + 14);
       ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
-      ctx.fillText(`Baseline (1981-2010): ${displayBaseline}`, offscreen.width / 2, centerY + 14);
+      ctx.font = '11px Inter, sans-serif';
+      ctx.fillText(CREDIT, offscreen.width / 2, offscreen.height - 12);
+    } else {
+      // Attribution is required by the CC BY-NC license, so keep a small credit.
+      ctx.font = '11px Inter, sans-serif';
+      const pad = 6;
+      const textWidth = ctx.measureText(CREDIT).width;
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+      ctx.fillRect(offscreen.width - textWidth - pad * 3, offscreen.height - 24, textWidth + pad * 3, 24);
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.75)';
+      ctx.textAlign = 'right';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(CREDIT, offscreen.width - pad * 1.5, offscreen.height - 12);
     }
 
     const link = document.createElement('a');
-    link.download = `climate-stripes-${title.toLowerCase().replace(' ', '-')}.png`;
+    link.download = `climate-stripes-${title.toLowerCase().replace(/\s+/g, '-')}.png`;
     link.href = offscreen.toDataURL('image/png');
     link.click();
   };
@@ -224,20 +269,20 @@ function StripesVisualization({ data, annotated, title, unit }: { data: YearlyDa
   const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
     const container = containerRef.current;
-    if (!canvas || !container || processedData.length === 0) return;
-    
+    if (!canvas || !container || !hasData) return;
+
     const canvasRect = canvas.getBoundingClientRect();
     const containerRect = container.getBoundingClientRect();
     const xOnCanvas = e.clientX - canvasRect.left;
-    
+
     const ratio = xOnCanvas / canvasRect.width;
     const index = Math.floor(ratio * processedData.length);
-    
+
     if (index >= 0 && index < processedData.length) {
       setHoveredIndex(index);
-      setMousePos({ 
-        x: e.clientX - containerRect.left, 
-        y: e.clientY - containerRect.top 
+      setMousePos({
+        x: e.clientX - containerRect.left,
+        y: e.clientY - containerRect.top
       });
     } else {
       setHoveredIndex(null);
@@ -248,46 +293,48 @@ function StripesVisualization({ data, annotated, title, unit }: { data: YearlyDa
     setHoveredIndex(null);
   };
 
-  if (processedData.length === 0) return <div className="text-white/40 text-xs font-mono uppercase tracking-widest h-64 flex items-center justify-center border border-white/10 rounded">No data available</div>;
+  if (!hasData) return <div className="text-white/40 text-xs font-mono uppercase tracking-widest h-64 flex items-center justify-center border border-white/10 rounded">No data available</div>;
+
+  const hovered = hoveredIndex !== null ? processedData[hoveredIndex] : null;
 
   return (
     <div ref={containerRef} className="relative flex flex-col w-full mx-auto max-w-4xl">
+      {annotated && (
+        <div className="flex justify-between mb-2 text-white/80 font-mono text-[11px] uppercase tracking-widest" aria-hidden="true">
+          <span>{processedData[0].year}</span>
+          <span>{processedData[processedData.length - 1].year}</span>
+        </div>
+      )}
       <div className="relative group rounded overflow-hidden shadow-2xl border border-white/10">
-        <canvas 
-          ref={canvasRef} 
-          width={800} 
-          height={300} 
+        <canvas
+          ref={canvasRef}
+          width={canvasSize.w}
+          height={canvasSize.h}
           className="w-full h-auto aspect-[8/3] block cursor-crosshair"
           onMouseMove={handleMouseMove}
           onMouseLeave={handleMouseLeave}
         />
-        {annotated && (
-          <div className="absolute bottom-0 w-full flex justify-between px-4 pb-2 text-white/90 font-mono text-[10px] uppercase tracking-widest mix-blend-difference pointer-events-none">
-            <span>{processedData[0].year}</span>
-            <span>{processedData[processedData.length - 1].year}</span>
-          </div>
-        )}
       </div>
 
-      {hoveredIndex !== null && processedData[hoveredIndex] && (
-        <div 
+      {hovered && (
+        <div
           className="absolute pointer-events-none z-50 bg-black/90 border border-white/20 p-3 rounded shadow-2xl backdrop-blur-sm transform -translate-x-1/2 -translate-y-full mt-[-10px]"
           style={{ left: mousePos.x, top: mousePos.y }}
         >
           <div className="text-white/50 text-[10px] uppercase tracking-widest font-mono mb-1">
-            {processedData[hoveredIndex].year}
+            {hovered.year}
           </div>
           <div className="text-white font-medium">
-            {processedData[hoveredIndex].temp === null || processedData[hoveredIndex].temp === undefined ? (
-              'No data'
+            {hovered.temp === null || hovered.temp === undefined ? (
+              'Not enough data'
             ) : (
-              `${unit === 'F' ? (processedData[hoveredIndex].temp * 9/5 + 32).toFixed(2) : processedData[hoveredIndex].temp.toFixed(2)}°${unit}`
+              `${unit === 'F' ? (hovered.temp * 9/5 + 32).toFixed(2) : hovered.temp.toFixed(2)}°${unit}`
             )}
           </div>
-          {processedData[hoveredIndex].anomaly !== null && processedData[hoveredIndex].anomaly !== undefined && (
-            <div className={`text-[10px] mt-1 ${processedData[hoveredIndex].anomaly! > 0 ? 'text-red-400' : 'text-blue-400'}`}>
-              {processedData[hoveredIndex].anomaly! > 0 ? '+' : ''}
-              {unit === 'F' ? (processedData[hoveredIndex].anomaly! * 9/5).toFixed(2) : processedData[hoveredIndex].anomaly!.toFixed(2)}°{unit} anomaly
+          {hovered.anomaly !== null && hovered.anomaly !== undefined && (
+            <div className={`text-[10px] mt-1 ${hovered.anomaly > 0 ? 'text-red-400' : 'text-blue-400'}`}>
+              {hovered.anomaly > 0 ? '+' : ''}
+              {unit === 'F' ? (hovered.anomaly * 9/5).toFixed(2) : hovered.anomaly.toFixed(2)}°{unit} vs {BASELINE[0]}–{BASELINE[1]}
             </div>
           )}
         </div>
@@ -295,17 +342,25 @@ function StripesVisualization({ data, annotated, title, unit }: { data: YearlyDa
 
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mt-6 gap-4">
         {annotated && (
-          <div className="flex flex-col w-72">
-            <div className="text-[9px] font-mono uppercase text-white/50 mb-2 flex justify-between tracking-widest">
-              <span>{displayMin}</span>
-              <span>Baseline: {displayBaseline}</span>
-              <span>{displayMax}</span>
+          <div className="flex flex-col gap-3">
+            <div className="flex flex-col w-72">
+              <div className="text-[9px] font-mono uppercase text-white/50 mb-2 flex justify-between tracking-widest">
+                <span>{displayMin}</span>
+                <span>Baseline {BASELINE[0]}–{BASELINE[1]}: {displayBaseline}</span>
+                <span>{displayMax}</span>
+              </div>
+              <div className="w-full h-1.5 rounded" style={{ backgroundImage: LEGEND_GRADIENT }} />
             </div>
-            <div className="w-full h-1.5 bg-gradient-to-r from-blue-900 via-white to-red-900 rounded" />
+            {hasMissing && (
+              <div className="flex items-center gap-2 text-[9px] font-mono uppercase tracking-widest text-white/50">
+                <span className="inline-block w-4 h-3 rounded-sm border border-white/10" style={{ backgroundImage: MISSING_HATCH }} />
+                Not enough data
+              </div>
+            )}
           </div>
         )}
-        
-        <button 
+
+        <button
           onClick={handleDownload}
           className="bg-white text-black px-6 py-2 rounded-sm text-xs font-bold uppercase tracking-widest hover:bg-white/90 transition-colors ml-auto flex items-center gap-2"
         >
@@ -318,7 +373,7 @@ function StripesVisualization({ data, annotated, title, unit }: { data: YearlyDa
 }
 
 export default function App() {
-  const [data, setData] = useState<{ land: YearlyData[] | null, sea: YearlyData[] | null } | null>(null);
+  const [data, setData] = useState<StripeResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [annotated, setAnnotated] = useState(true);
   const [activeTab, setActiveTab] = useState<'land' | 'sea'>('land');
@@ -327,22 +382,33 @@ export default function App() {
   const [isPanelOpen, setIsPanelOpen] = useState(false);
   const [showTooltip, setShowTooltip] = useState(true);
 
+  // Only the most recent selection may update the panel; older requests are cancelled.
+  const requestRef = useRef<AbortController | null>(null);
+
   const handlePolygonCreated = useCallback(async (geoJSON: any) => {
+    requestRef.current?.abort();
+    const request = new AbortController();
+    requestRef.current = request;
+
     setLoading(true);
     setError(null);
     setData(null);
     setIsPanelOpen(true); // Open the panel when loading starts
     try {
-      const result = await fetchStripeData(geoJSON);
+      const result = await fetchStripeData(geoJSON, request.signal);
+      if (request.signal.aborted) return;
       setData(result);
-      if (result.land && result.land.length > 0) setActiveTab('land');
-      else if (result.sea && result.sea.length > 0) setActiveTab('sea');
+      if (result.land) setActiveTab('land');
+      else if (result.sea) setActiveTab('sea');
     } catch (err: any) {
-      setError(err.message || 'An error occurred');
+      if (request.signal.aborted) return;
+      setError(err?.message || 'An error occurred');
     } finally {
-      setLoading(false);
+      if (requestRef.current === request) setLoading(false);
     }
   }, []);
+
+  const activeSeries = data ? (activeTab === 'land' ? data.land : data.sea) : null;
 
   return (
     <div className="flex flex-col h-screen w-full bg-[#050505] text-[#E0E0E0] font-sans overflow-hidden relative">
@@ -451,7 +517,7 @@ export default function App() {
               <div className="flex flex-col w-full">
                 <div className="flex flex-col md:flex-row justify-between items-start md:items-end mb-8 gap-4 border-b border-white/10 pb-4">
                   <div className="flex gap-2">
-                    {data.land && data.land.length > 0 && (
+                    {data.land && (
                       <button 
                         onClick={() => setActiveTab('land')}
                         className={`px-6 py-2.5 text-[10px] font-bold uppercase tracking-[0.2em] transition-colors flex items-center gap-2 ${activeTab === 'land' ? 'border-b-2 border-blue-500 bg-white/5 text-white' : 'text-white/30 hover:text-white/50'}`}
@@ -460,13 +526,13 @@ export default function App() {
                         Land
                       </button>
                     )}
-                    {data.sea && data.sea.length > 0 && (
+                    {data.sea && (
                       <button 
                         onClick={() => setActiveTab('sea')}
                         className={`px-6 py-2.5 text-[10px] font-bold uppercase tracking-[0.2em] transition-colors flex items-center gap-2 ${activeTab === 'sea' ? 'border-b-2 border-blue-500 bg-white/5 text-white' : 'text-white/30 hover:text-white/50'}`}
                       >
                         <Waves className="w-4 h-4" />
-                        Sea
+                        Ocean
                       </button>
                     )}
                   </div>
@@ -474,11 +540,11 @@ export default function App() {
                   <div className="flex items-center gap-6">
                     {/* Info Icon */}
                     <div className="relative group flex items-center">
-                      <a href="https://power.larc.nasa.gov/" target="_blank" rel="noopener noreferrer" className="text-white/40 hover:text-white transition-colors">
+                      <a href="https://berkeleyearth.org/data/" target="_blank" rel="noopener noreferrer" className="text-white/40 hover:text-white transition-colors" aria-label="About the data: Berkeley Earth">
                         <Info className="w-4 h-4" />
                       </a>
                       <div className="absolute right-full top-1/2 -translate-y-1/2 mr-3 w-56 p-2 bg-black/90 border border-white/10 rounded text-[9px] uppercase tracking-widest text-white/70 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none text-left">
-                        Temperature data provided by NASA POWER
+                        Temperature data from Berkeley Earth high-resolution (0.25°) Land + Ocean grid
                       </div>
                     </div>
                     
@@ -510,14 +576,32 @@ export default function App() {
                 </div>
 
                 <div className="flex-1 flex flex-col items-center">
-                  {activeTab === 'land' && data.land ? (
-                    <StripesVisualization data={data.land} annotated={annotated} title="Land" unit={unit} />
-                  ) : activeTab === 'sea' && data.sea ? (
-                    <StripesVisualization data={data.sea} annotated={annotated} title="Sea" unit={unit} />
+                  {activeSeries ? (
+                    <>
+                      <StripesVisualization
+                        data={activeSeries.data}
+                        annotated={annotated}
+                        title={activeTab === 'land' ? 'Land' : 'Ocean'}
+                        unit={unit}
+                      />
+                      <p className="w-full max-w-4xl mt-4 text-[11px] text-white/50 leading-relaxed">
+                        {activeSeries.cellCount} grid cell{activeSeries.cellCount === 1 ? '' : 's'} ({data.resolution}°) · {Math.round(activeSeries.areaShare * 100)}% of the selected area
+                        {activeTab === 'sea' && ' · Open-ocean values are based on sea-surface temperature'}
+                      </p>
+                    </>
                   ) : (
                     <div className="text-gray-500">No data available for this surface type in the selected region.</div>
                   )}
                 </div>
+
+                <p className="w-full max-w-4xl mx-auto mt-6 pt-4 border-t border-white/10 text-[11px] text-white/50 leading-relaxed">
+                  Temperature data:{' '}
+                  <a href="https://berkeleyearth.org" target="_blank" rel="noopener noreferrer" className="underline hover:text-white">Berkeley Earth</a>
+                  , licensed under{' '}
+                  <a href="https://creativecommons.org/licenses/by-nc/4.0/" target="_blank" rel="noopener noreferrer" className="underline hover:text-white">CC BY-NC 4.0</a>
+                  . Berkeley Earth High-Resolution (beta) monthly 0.25° Land + Ocean data, averaged to annual means for {data.startYear}–{data.endYear}
+                  {data.resolution > 0.25 && `; large selections use a ${data.resolution}° aggregate`}.
+                </p>
               </div>
             )}
           </div>

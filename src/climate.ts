@@ -20,10 +20,6 @@ export interface YearlyData {
 
 export interface SurfaceSeries {
   data: YearlyData[];
-  /** Number of grid cells that contribute to this surface. */
-  cellCount: number;
-  /** This surface's share of the selected area (0–1). */
-  areaShare: number;
 }
 
 export interface StripeResult {
@@ -232,7 +228,7 @@ export const fetchStripeData = async (polygon: any, signal?: AbortSignal): Promi
   signal?.throwIfAborted();
 
   const Y = m.years;
-  const newAcc = () => ({ total: 0, clim: 0, cells: 0, sum: new Float64Array(Y), weight: new Float64Array(Y) });
+  const newAcc = () => ({ total: 0, clim: 0, sum: new Float64Array(Y), weight: new Float64Array(Y) });
   const acc = { land: newAcc(), sea: newAcc() };
 
   for (const cell of cells) {
@@ -254,7 +250,6 @@ export const fetchStripeData = async (polygon: any, signal?: AbortSignal): Promi
       if (sw <= 0) continue;
       s.total += sw;
       s.clim += sw * clim;
-      s.cells++;
       const base = k * Y;
       for (let y = 0; y < Y; y++) {
         const v = tile.anomaly[base + y];
@@ -276,7 +271,7 @@ export const fetchStripeData = async (polygon: any, signal?: AbortSignal): Promi
       const covered = s.weight[y] / s.total >= MIN_YEAR_COVERAGE;
       data.push({ year: m.startYear + y, temp: covered ? s.sum[y] / s.weight[y] + climMean : null });
     }
-    return { data, cellCount: s.cells, areaShare: s.total / grandTotal };
+    return { data };
   };
 
   return {

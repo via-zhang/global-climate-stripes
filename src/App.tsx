@@ -5,8 +5,9 @@ import { interpolateRdBu } from 'd3-scale-chromatic';
 import { fetchStripeData, type StripeResult, type YearlyData } from './climate';
 import MapView from './MapView';
 
-// Color scale: -2.5°C (blue) to +2.5°C (red)
-const MAX_ANOMALY = 2.5;
+// Color scale: -4°F (blue) to +4°F (red), which is about ±2.2°C. Anomalies are in °C internally.
+const MAX_ANOMALY_F = 4;
+const MAX_ANOMALY = (MAX_ANOMALY_F * 5) / 9;
 const colorScale = scaleSequential(interpolateRdBu).domain([MAX_ANOMALY, -MAX_ANOMALY]);
 const LEGEND_GRADIENT = `linear-gradient(to right, ${Array.from({ length: 11 }, (_, i) => i)
   .map(i => colorScale(-MAX_ANOMALY + (2 * MAX_ANOMALY * i) / 10))
@@ -88,8 +89,8 @@ function StripesVisualization({ data, annotated, title, unit }: { data: YearlyDa
 
   const hasData = processedData.length > 0;
   const displayBaseline = unit === 'C' ? `${baselineTemp.toFixed(1)}°C` : `${(baselineTemp * 9/5 + 32).toFixed(1)}°F`;
-  const displayMin = unit === 'C' ? `-${MAX_ANOMALY}°C` : `-${(MAX_ANOMALY * 9 / 5).toFixed(1)}°F`;
-  const displayMax = unit === 'C' ? `+${MAX_ANOMALY}°C` : `+${(MAX_ANOMALY * 9 / 5).toFixed(1)}°F`;
+  const displayMin = unit === 'C' ? `-${MAX_ANOMALY.toFixed(1)}°C` : `-${MAX_ANOMALY_F}°F`;
+  const displayMax = unit === 'C' ? `+${MAX_ANOMALY.toFixed(1)}°C` : `+${MAX_ANOMALY_F}°F`;
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -488,18 +489,12 @@ export default function App() {
 
                 <div className="flex-1 flex flex-col items-center">
                   {activeSeries ? (
-                    <>
-                      <StripesVisualization
-                        data={activeSeries.data}
-                        annotated={annotated}
-                        title={activeTab === 'land' ? 'Land' : 'Ocean'}
-                        unit={unit}
-                      />
-                      <p className="w-full max-w-4xl mt-3 text-[11px] text-white/50 leading-relaxed">
-                        {activeSeries.cellCount} grid cell{activeSeries.cellCount === 1 ? '' : 's'} ({data.resolution}°) · {Math.round(activeSeries.areaShare * 100)}% of the selected area
-                        {activeTab === 'sea' && ' · Open-ocean values are based on sea-surface temperature'}
-                      </p>
-                    </>
+                    <StripesVisualization
+                      data={activeSeries.data}
+                      annotated={annotated}
+                      title={activeTab === 'land' ? 'Land' : 'Ocean'}
+                      unit={unit}
+                    />
                   ) : (
                     <div className="text-gray-500">No data available for this surface type in the selected region.</div>
                   )}

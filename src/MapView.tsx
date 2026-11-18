@@ -13,6 +13,7 @@ import VectorSource from 'ol/source/Vector';
 import Draw, { createBox } from 'ol/interaction/Draw';
 import { Attribution } from 'ol/control';
 import { defaults as defaultInteractions } from 'ol/interaction/defaults';
+import DragPan from 'ol/interaction/DragPan';
 import { Fill, Stroke, Style } from 'ol/style';
 import Projection from 'ol/proj/Projection';
 import { addCoordinateTransforms, addProjection, fromLonLat as fromLonLat3857, toLonLat as toLonLat3857 } from 'ol/proj';
@@ -83,7 +84,10 @@ export default function MapView({
     const map = new OlMap({
       target: targetRef.current,
       controls: [new Attribution({ collapsible: false })],
-      interactions: defaultInteractions({ altShiftDragRotate: false, pinchRotate: false }),
+      // Drag panning without inertia, so the map stops exactly where the pointer is released.
+      interactions: defaultInteractions({ altShiftDragRotate: false, pinchRotate: false, dragPan: false }).extend([
+        new DragPan(),
+      ]),
       layers: [
         // Ocean and land fills show at the poles (beyond OSM's ±85° tiles) and while tiles load.
         new VectorLayer({
@@ -132,8 +136,13 @@ export default function MapView({
       ],
       view: new View({
         projection: EQUAL_EARTH,
-        extent: EXTENT,
-        showFullExtent: true,
+        // Only the map centre is kept inside this area, and it is extended to the south so the
+        // southern hemisphere can be panned up above the open stripes panel.
+        extent: [EXTENT[0], EXTENT[1] - 1.2 * EXTENT[3], EXTENT[2], EXTENT[3]],
+        constrainOnlyCenter: true,
+        // No elastic "spring back" after panning or zooming past a limit.
+        smoothExtentConstraint: false,
+        smoothResolutionConstraint: false,
         maxZoom: 12,
       }),
     });

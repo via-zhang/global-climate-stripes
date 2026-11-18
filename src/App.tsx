@@ -1,93 +1,20 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { MapContainer, TileLayer, useMap } from 'react-leaflet';
-import L from 'leaflet';
-import 'leaflet/dist/leaflet.css';
-import 'leaflet-draw/dist/leaflet.draw.css';
-import 'leaflet-draw';
 import { Download, Info, Layers, Waves, X, ChevronUp, ChevronDown } from 'lucide-react';
-import * as d3 from 'd3';
+import { scaleSequential } from 'd3-scale';
+import { interpolateRdBu } from 'd3-scale-chromatic';
 import { fetchStripeData, type StripeResult, type YearlyData } from './climate';
-
-// Fix for leaflet-draw rectangle issue on modern browsers
-// @ts-ignore
-window.type = '';
-
-// Leaflet draw control integration
-function DrawControl({ onPolygonCreated, onDrawStart }: { onPolygonCreated: (geoJSON: any) => void, onDrawStart?: () => void }) {
-  const map = useMap();
-  
-  const callbacksRef = useRef({ onPolygonCreated, onDrawStart });
-  useEffect(() => {
-    callbacksRef.current = { onPolygonCreated, onDrawStart };
-  }, [onPolygonCreated, onDrawStart]);
-
-  useEffect(() => {
-    const drawnItems = new L.FeatureGroup();
-    map.addLayer(drawnItems);
-    
-    // @ts-ignore
-    const drawControl = new L.Control.Draw({
-      draw: {
-        polyline: false,
-        polygon: {
-          allowIntersection: false,
-          drawError: { color: '#e1e100', message: '<strong>Oh snap!<strong> you can\'t draw that!' },
-          shapeOptions: { color: '#60a5fa', fillColor: '#60a5fa', fillOpacity: 0.2, weight: 2 }
-        },
-        rectangle: { shapeOptions: { color: '#60a5fa', fillColor: '#60a5fa', fillOpacity: 0.2, weight: 2 } },
-        circle: false,
-        marker: false,
-        circlemarker: false,
-      },
-      edit: {
-        featureGroup: drawnItems,
-        edit: false,
-        remove: false
-      }
-    });
-    map.addControl(drawControl);
-
-    const onDrawCreated = (e: any) => {
-      drawnItems.clearLayers();
-      
-      // Also forcefully remove any other polygons/rectangles from the map to ensure no duplicates
-      map.eachLayer((l: any) => {
-        if (l instanceof L.Polygon || l instanceof L.Rectangle) {
-          map.removeLayer(l);
-        }
-      });
-      
-      const layer = e.layer;
-      drawnItems.addLayer(layer);
-      callbacksRef.current.onPolygonCreated(layer.toGeoJSON());
-    };
-
-    map.on(L.Draw.Event.CREATED, onDrawCreated);
-
-    const handleDrawStart = () => {
-      if (callbacksRef.current.onDrawStart) callbacksRef.current.onDrawStart();
-    };
-    map.on(L.Draw.Event.DRAWSTART, handleDrawStart);
-
-    return () => {
-      map.removeControl(drawControl);
-      map.off(L.Draw.Event.CREATED, onDrawCreated);
-      map.off(L.Draw.Event.DRAWSTART, handleDrawStart);
-      map.removeLayer(drawnItems);
-    };
-  }, [map]);
-
-  return null;
-}
+import MapView from './MapView';
 
 // Color scale: -2.5°C (blue) to +2.5°C (red)
 const MAX_ANOMALY = 2.5;
-const colorScale = d3.scaleSequential(d3.interpolateRdBu).domain([MAX_ANOMALY, -MAX_ANOMALY]);
-const LEGEND_GRADIENT = `linear-gradient(to right, ${d3
-  .range(11)
+const colorScale = scaleSequential(interpolateRdBu).domain([MAX_ANOMALY, -MAX_ANOMALY]);
+const LEGEND_GRADIENT = `linear-gradient(to right, ${Array.from({ length: 11 }, (_, i) => i)
   .map(i => colorScale(-MAX_ANOMALY + (2 * MAX_ANOMALY * i) / 10))
   .join(', ')})`;
 const BASELINE: [number, number] = [1981, 2010];
+// Stripes are 16:5. Cap their width by the panel's height (70vh minus ~300px of controls and
+// text) so the whole panel fits on screen without scrolling.
+const STRIPES_MAX_WIDTH = 'max(18rem, min(56rem, calc((70vh - 300px) * 3.2)))';
 const CREDIT = 'Data: Berkeley Earth (berkeleyearth.org), CC BY-NC 4.0';
 const MISSING_HATCH =
   'repeating-linear-gradient(135deg, #0b0b0b 0 4px, rgba(255,255,255,0.18) 4px 5px)';
@@ -170,7 +97,7 @@ function StripesVisualization({ data, annotated, title, unit }: { data: YearlyDa
     const observer = new ResizeObserver(([entry]) => {
       const dpr = window.devicePixelRatio || 1;
       const w = Math.max(1, Math.round(entry.contentRect.width * dpr));
-      setCanvasSize({ w, h: Math.round((w * 3) / 8) });
+      setCanvasSize({ w, h: Math.round((w * 5) / 16) });
     });
     observer.observe(canvas);
     return () => observer.disconnect();
@@ -298,7 +225,7 @@ function StripesVisualization({ data, annotated, title, unit }: { data: YearlyDa
   const hovered = hoveredIndex !== null ? processedData[hoveredIndex] : null;
 
   return (
-    <div ref={containerRef} className="relative flex flex-col w-full mx-auto max-w-4xl">
+    <div ref={containerRef} className="relative flex flex-col w-full mx-auto" style={{ maxWidth: STRIPES_MAX_WIDTH }}>
       {annotated && (
         <div className="flex justify-between mb-2 text-white/80 font-mono text-[11px] uppercase tracking-widest" aria-hidden="true">
           <span>{processedData[0].year}</span>
@@ -310,7 +237,7 @@ function StripesVisualization({ data, annotated, title, unit }: { data: YearlyDa
           ref={canvasRef}
           width={canvasSize.w}
           height={canvasSize.h}
-          className="w-full h-auto aspect-[8/3] block cursor-crosshair"
+          className="w-full h-auto aspect-[16/5] block cursor-crosshair"
           onMouseMove={handleMouseMove}
           onMouseLeave={handleMouseLeave}
         />
@@ -340,7 +267,7 @@ function StripesVisualization({ data, annotated, title, unit }: { data: YearlyDa
         </div>
       )}
 
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mt-6 gap-4">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mt-4 gap-4">
         {annotated && (
           <div className="flex flex-col gap-3">
             <div className="flex flex-col w-72">
@@ -381,6 +308,7 @@ export default function App() {
   const [unit, setUnit] = useState<'C' | 'F'>('F');
   const [isPanelOpen, setIsPanelOpen] = useState(false);
   const [showTooltip, setShowTooltip] = useState(true);
+  const hideTooltip = useCallback(() => setShowTooltip(false), []);
 
   // Only the most recent selection may update the panel; older requests are cancelled.
   const requestRef = useRef<AbortController | null>(null);
@@ -445,36 +373,19 @@ export default function App() {
       </header>
 
       {/* Map (Fullscreen) */}
-      <main className="absolute inset-0 z-0 bg-[#111111] select-none">
-        <MapContainer 
-          center={[20, 0]} 
-          zoom={3} 
-          minZoom={2}
-          className="w-full h-full"
-          zoomControl={true}
-          maxBounds={[[-90, -180], [90, 180]]}
-          maxBoundsViscosity={1.0}
-        >
-        <TileLayer
-          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-          noWrap={true}
-          bounds={[[-90, -180], [90, 180]]}
-          className="dark-tiles"
-        />
-          <DrawControl onPolygonCreated={handlePolygonCreated} onDrawStart={() => setShowTooltip(false)} />
-        </MapContainer>
+      <main className="absolute inset-0 z-0 bg-[#050505] select-none">
+        <MapView onPolygonCreated={handlePolygonCreated} onDrawStart={hideTooltip} />
         
         {showTooltip && (
-          <div className="absolute top-[120px] lg:top-[80px] left-14 md:left-16 z-[400] bg-black/80 backdrop-blur-md border border-white/10 px-4 py-3 rounded shadow-xl max-w-[220px] md:max-w-[260px] flex flex-col pointer-events-auto animate-in fade-in slide-in-from-left-4">
-            <div className="absolute -left-[5px] top-4 lg:top-4 w-3 h-3 bg-black/80 border-t-0 border-l border-b border-white/10 transform rotate-45 hidden lg:block"></div>
+          <div className="absolute top-[94px] left-[60px] z-[400] bg-black/80 backdrop-blur-md border border-white/10 px-4 py-3 rounded shadow-xl max-w-[220px] md:max-w-[260px] flex flex-col pointer-events-auto animate-in fade-in slide-in-from-left-4">
+            <div className="absolute -left-[5px] top-4 w-3 h-3 bg-black/80 border-t-0 border-l border-b border-white/10 transform rotate-45"></div>
             <div className="flex justify-between items-start mb-1 relative z-10 gap-4">
               <h3 className="text-[12px] font-bold text-white/70 uppercase tracking-widest">Select an Area</h3>
               <button onClick={() => setShowTooltip(false)} className="text-white/40 hover:text-white transition-colors flex-shrink-0">
                 <X className="w-3 h-3" />
               </button>
             </div>
-            <p className="text-[12px] text-white/50 leading-relaxed relative z-10">Use the drawing tools (polygon or rectangle) to select a region on the map. The generated climate stripe will show averaged temperatures within the selected area.</p>
+            <p className="text-[12px] text-white/50 leading-relaxed relative z-10">Use the drawing tools to select a region: drag to draw a rectangle, or click points and double-click to finish a polygon. The map uses the Equal Earth projection, so areas are shown at their true relative size.</p>
           </div>
         )}
       </main>
@@ -496,7 +407,7 @@ export default function App() {
             </button>
           </div>
           
-          <div className="p-6 lg:px-12 w-full max-w-6xl mx-auto min-h-[40vh] max-h-[70vh] overflow-y-auto">
+          <div className="no-scrollbar px-6 py-5 lg:px-12 w-full max-w-6xl mx-auto min-h-[40vh] max-h-[70vh] overflow-y-auto">
             {loading ? (
               <div className="flex-1 flex flex-col items-center justify-center opacity-70 h-64">
                 <div className="w-10 h-10 border-2 border-blue-500/30 border-t-blue-500 rounded-full animate-spin mb-4" />
@@ -515,7 +426,7 @@ export default function App() {
               </div>
             ) : (
               <div className="flex flex-col w-full">
-                <div className="flex flex-col md:flex-row justify-between items-start md:items-end mb-8 gap-4 border-b border-white/10 pb-4">
+                <div className="flex flex-col md:flex-row justify-between items-start md:items-end mb-5 gap-4 border-b border-white/10 pb-3">
                   <div className="flex gap-2">
                     {data.land && (
                       <button 
@@ -584,7 +495,7 @@ export default function App() {
                         title={activeTab === 'land' ? 'Land' : 'Ocean'}
                         unit={unit}
                       />
-                      <p className="w-full max-w-4xl mt-4 text-[11px] text-white/50 leading-relaxed">
+                      <p className="w-full max-w-4xl mt-3 text-[11px] text-white/50 leading-relaxed">
                         {activeSeries.cellCount} grid cell{activeSeries.cellCount === 1 ? '' : 's'} ({data.resolution}°) · {Math.round(activeSeries.areaShare * 100)}% of the selected area
                         {activeTab === 'sea' && ' · Open-ocean values are based on sea-surface temperature'}
                       </p>
@@ -594,7 +505,7 @@ export default function App() {
                   )}
                 </div>
 
-                <p className="w-full max-w-4xl mx-auto mt-6 pt-4 border-t border-white/10 text-[11px] text-white/50 leading-relaxed">
+                <p className="w-full max-w-4xl mx-auto mt-4 pt-3 border-t border-white/10 text-[11px] text-white/50 leading-relaxed">
                   Temperature data:{' '}
                   <a href="https://berkeleyearth.org" target="_blank" rel="noopener noreferrer" className="underline hover:text-white">Berkeley Earth</a>
                   , licensed under{' '}

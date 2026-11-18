@@ -8,6 +8,10 @@ Draw a polygon or rectangle on the map, and the app builds "climate stripes" for
 
 You can switch between Celsius and Fahrenheit and download the stripes as a PNG, with or without annotations.
 
+## The map
+
+The map uses the **Equal Earth** projection (EPSG:8857), an equal-area world projection, so a region's size on screen matches its true size relative to the rest of the globe. OpenStreetMap tiles are reprojected into it on the fly, and Natural Earth land shapes (via `world-atlas`) fill in the poles beyond the tiles' ±85° limit. A shape you draw is trimmed to the edge of the map and converted back to longitude and latitude, with its edges subdivided so the region matches what you drew.
+
 ## How the data is processed
 
 1. **Pre-built tiles.** [`scripts/build_tiles.py`](scripts/build_tiles.py) turns Berkeley Earth's monthly 0.25° high-resolution data into annual means and splits them into small tiles, plus a 1° version for large areas. The tiles are hosted as static files outside this repository. The app is fully static: there is no backend and no live API call.
@@ -34,7 +38,7 @@ See [DATA_NOTICE.md](DATA_NOTICE.md) for the exact source file, the changes made
 ## Tech stack
 
 - **Frontend:** React (Vite), TypeScript, Tailwind CSS
-- **Mapping:** React-Leaflet, Leaflet, Leaflet-Draw, OpenStreetMap tiles
-- **Visualization:** HTML5 Canvas, D3.js
+- **Mapping:** OpenLayers, Equal Earth projection, OpenStreetMap tiles, Natural Earth land (world-atlas)
+- **Visualization:** HTML5 Canvas, d3-scale
 - **Geospatial:** Turf.js
 - **Data pipeline:** Python, NumPy, netCDF4

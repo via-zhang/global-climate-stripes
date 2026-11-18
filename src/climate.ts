@@ -1,4 +1,6 @@
-import * as turf from '@turf/turf';
+import { bbox } from '@turf/bbox';
+import { booleanPointInPolygon } from '@turf/boolean-point-in-polygon';
+import { centroid } from '@turf/centroid';
 
 /**
  * Regional temperature series from pre-built Berkeley Earth tiles.
@@ -169,7 +171,7 @@ interface Cell {
 
 /** Index range of cells overlapping the polygon's bounding box at a given resolution. */
 function cellRange(polygon: any, res: number) {
-  const [minLng, minLat, maxLng, maxLat] = turf.bbox(polygon);
+  const [minLng, minLat, maxLng, maxLat] = bbox(polygon);
   const nLat = Math.round(180 / res);
   const nLon = Math.round(360 / res);
   const clamp = (v: number, n: number) => Math.max(0, Math.min(n - 1, v));
@@ -200,11 +202,11 @@ function cellsInPolygon(polygon: any, res: number): Cell[] {
   for (let i = i0; i <= i1; i++) {
     const lat = -90 + (i + 0.5) * res;
     for (let j = j0; j <= j1; j++) {
-      if (turf.booleanPointInPolygon([-180 + (j + 0.5) * res, lat], polygon)) cells.push({ i, j });
+      if (booleanPointInPolygon([-180 + (j + 0.5) * res, lat], polygon)) cells.push({ i, j });
     }
   }
   if (cells.length === 0) {
-    const [lng, lat] = turf.centroid(polygon).geometry.coordinates;
+    const [lng, lat] = centroid(polygon).geometry.coordinates;
     const clamp = (v: number, n: number) => Math.max(0, Math.min(n - 1, v));
     cells.push({ i: clamp(Math.floor((lat + 90) / res), nLat), j: clamp(Math.floor((lng + 180) / res), nLon) });
   }

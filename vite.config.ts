@@ -12,10 +12,10 @@ function contentSecurityPolicy(dataOrigin: string): Plugin {
   const policy = [
     "default-src 'self'",
     "script-src 'self'",
-    // Leaflet and leaflet-draw set inline styles; the Inter font CSS comes from Google Fonts.
+    // OpenLayers and React set inline styles; the Inter font CSS comes from Google Fonts.
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
     'font-src https://fonts.gstatic.com',
-    "img-src 'self' data: blob: https://*.tile.openstreetmap.org",
+    "img-src 'self' data: blob: https://tile.openstreetmap.org",
     `connect-src 'self' ${dataOrigin}`,
     "object-src 'none'",
     "base-uri 'self'",

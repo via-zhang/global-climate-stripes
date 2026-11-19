@@ -12,11 +12,13 @@ function contentSecurityPolicy(dataOrigin: string): Plugin {
   const policy = [
     "default-src 'self'",
     "script-src 'self'",
-    // OpenLayers and React set inline styles; the Inter font CSS comes from Google Fonts.
+    // MapLibre and React set inline styles; the Inter font CSS comes from Google Fonts.
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
     'font-src https://fonts.gstatic.com',
     "img-src 'self' data: blob: https://tile.openstreetmap.org",
-    `connect-src 'self' ${dataOrigin}`,
+    // MapLibre's worker is served from this site; it fetches OpenStreetMap tiles.
+    "worker-src 'self'",
+    `connect-src 'self' ${dataOrigin} https://tile.openstreetmap.org`,
     "object-src 'none'",
     "base-uri 'self'",
     "form-action 'none'",
@@ -49,6 +51,15 @@ export default defineConfig(({command, mode}) => {
   return {
     base: './',
     plugins,
+    build: {
+      // MapLibre is about 1 MB on its own; keep it in its own long-cached chunk.
+      chunkSizeWarningLimit: 1100,
+      rollupOptions: {
+        output: {
+          manualChunks: (id: string) => (id.includes('node_modules/maplibre-gl') ? 'maplibre' : undefined),
+        },
+      },
+    },
     resolve: {
       alias: {
         '@': path.resolve(__dirname, '.'),

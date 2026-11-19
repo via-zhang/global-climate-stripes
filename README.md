@@ -10,7 +10,7 @@ You can switch between Celsius and Fahrenheit and download the stripes as a PNG,
 
 ## The map
 
-The map uses the **Equal Earth** projection (EPSG:8857), an equal-area world projection, so a region's size on screen matches its true size relative to the rest of the globe. OpenStreetMap tiles are reprojected into it on the fly, and Natural Earth land shapes (via `world-atlas`) fill in the poles beyond the tiles' ±85° limit. A shape you draw is trimmed to the edge of the map and converted back to longitude and latitude, with its edges subdivided so the region matches what you drew.
+The map is a 3D globe (MapLibre GL's globe projection) with OpenStreetMap tiles, darkened by inverting their colors. Drag to spin it and scroll or pinch to zoom. The rectangle tool draws a latitude/longitude box; the polygon tool takes clicked points and finishes on a double-click or a click on the first point. Shapes that cross the 180° meridian are split there before the data lookup.
 
 ## How the data is processed
 
@@ -38,7 +38,7 @@ See [DATA_NOTICE.md](DATA_NOTICE.md) for the exact source file, the changes made
 ## Tech stack
 
 - **Frontend:** React (Vite), TypeScript, Tailwind CSS
-- **Mapping:** OpenLayers, Equal Earth projection, OpenStreetMap tiles, Natural Earth land (world-atlas)
+- **Mapping:** MapLibre GL (globe projection), OpenStreetMap tiles
 - **Visualization:** HTML5 Canvas, d3-scale
 - **Geospatial:** Turf.js
 - **Data pipeline:** Python, NumPy, netCDF4

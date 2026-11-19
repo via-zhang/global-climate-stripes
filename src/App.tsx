@@ -308,6 +308,16 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [unit, setUnit] = useState<'C' | 'F'>('F');
   const [isPanelOpen, setIsPanelOpen] = useState(false);
+  // Height of the stripes panel, so the globe can move up into the space left above it.
+  const panelRef = useRef<HTMLDivElement>(null);
+  const [panelHeight, setPanelHeight] = useState(0);
+  useEffect(() => {
+    const el = panelRef.current;
+    if (!el) return;
+    const observer = new ResizeObserver(() => setPanelHeight(el.offsetHeight));
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
   const [showTooltip, setShowTooltip] = useState(true);
   const hideTooltip = useCallback(() => setShowTooltip(false), []);
 
@@ -375,7 +385,7 @@ export default function App() {
 
       {/* Map (Fullscreen) */}
       <main className="absolute inset-0 z-0 bg-[#050505] select-none">
-        <MapView onPolygonCreated={handlePolygonCreated} onDrawStart={hideTooltip} />
+        <MapView onPolygonCreated={handlePolygonCreated} onDrawStart={hideTooltip} bottomInset={isPanelOpen ? panelHeight : 0} />
         
         {showTooltip && (
           <div className="absolute top-[94px] left-[60px] z-[400] bg-black/80 backdrop-blur-md border border-white/10 px-4 py-3 rounded shadow-xl max-w-[220px] md:max-w-[260px] flex flex-col pointer-events-auto animate-in fade-in slide-in-from-left-4">
@@ -386,13 +396,13 @@ export default function App() {
                 <X className="w-3 h-3" />
               </button>
             </div>
-            <p className="text-[12px] text-white/50 leading-relaxed relative z-10">Use the drawing tools to select a region: drag to draw a rectangle, or click points and double-click to finish a polygon. The map uses the Equal Earth projection, so areas are shown at their true relative size.</p>
+            <p className="text-[12px] text-white/50 leading-relaxed relative z-10">Drag to spin the globe. Then use the drawing tools to select a region: drag to draw a rectangle, or click points and double-click (or click the first point) to finish a polygon.</p>
           </div>
         )}
       </main>
 
       {/* Collapsible Bottom Panel */}
-      <div className={`absolute bottom-0 left-0 right-0 z-[500] transition-transform duration-500 ease-in-out ${isPanelOpen ? 'translate-y-0' : 'translate-y-full'}`}>
+      <div ref={panelRef} className={`absolute bottom-0 left-0 right-0 z-[500] transition-transform duration-500 ease-in-out ${isPanelOpen ? 'translate-y-0' : 'translate-y-full'}`}>
         <div className="bg-black/90 backdrop-blur-xl border-t border-white/10 shadow-[0_-10px_40px_rgba(0,0,0,0.5)] relative">
           {/* Toggle Button */}
           <div className="flex justify-center -top-10 absolute left-0 right-0 pointer-events-none">
